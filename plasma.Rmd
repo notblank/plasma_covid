@@ -1,0 +1,188 @@
+---
+title: "Plasma"
+author: Federico Zertuche
+date: 
+output: rmarkdown::github_document
+---
+
+
+```{r}
+
+library(tidyverse)
+library(lubridate)
+library(survival)
+
+```
+
+```{r}
+
+plasma_simple <- read_csv('./plasma_simple.csv')
+
+```
+
+
+## Hospital Stays:
+
+
+- 49 patients had stays of 7 or less days.
+- Stays lasted 12.4 days in average (sd 8.18).
+
+
+```{r}
+
+plasma_simple %>%
+    ggplot() +
+    geom_histogram(aes(x = days_hospital)) +
+    geom_vline(xintercept = 7, linetype = 2, size = 2, alpha = 0.5) +
+    labs(x = 'stay duration (days)')
+
+plasma_simple %>%
+    filter(days_hospital <= 7) %>%
+    count()
+
+plasma_simple %>%
+    summarise(mean(days_hospital), sd(days_hospital))
+
+plasma_simple %>%
+    ggplot() +
+    geom_boxplot(aes(x = vital_st, y = days_hospital, fill = vital_st), alpha = 0.5) +
+    theme(legend.position = "None") +
+    labs(x = '', y = 'stay duration (days)')
+
+```
+
+## Predict hospital stay duration from saturation or respiratory frequency?
+
+No.
+
+```{r}
+
+plasma_simple %>%
+    ggplot(aes(x = fr_basal, y = days_hospital, color = vital_st)) +
+    geom_point() +
+    geom_smooth(method = lm, se = FALSE)
+
+plasma_simple %>%
+    ggplot(aes(x = sat_basal, y = days_hospital, color = vital_st)) +
+    geom_point() +
+    geom_smooth(method = lm, se = FALSE)
+
+```
+
+
+## First models:
+
+- Differences were computed by (last measurement - basal).
+- All models controll for age, sex, death or alive, hospital, 
+  number of days from: symptoms to hospitalization and symptoms to treatment.
+
+- Treatment has a positive effect on saturation difference and 
+  respiratory frequency difference.
+
+
+```{r}
+
+sat_mod <- lm(sat_diff ~ age + sex + group + vital_st + hospital + 
+   nd_sint_tto + nd_sint_ing, data = plasma_simple) 
+
+sat_mod %>%
+    summary()
+
+fr_mod <- lm(fr_diff ~ age + sex + group + vital_st + hospital + 
+   nd_sint_tto + nd_sint_ing, data = plasma_simple)
+
+fr_mod %>%
+    summary()
+
+```
+
+## Distributions per Hospital
+
+```{r}
+
+plasma_simple %>%
+    ggplot() +
+    geom_density(aes(sat_diff, fill = hospital), position = 'dodge', alpha = 0.3) +
+    labs(x = 'saturation difference')
+
+plasma_simple %>%
+    ggplot() +
+    geom_density(aes(fr_diff, fill = hospital), position = 'dodge', alpha = 0.3) +
+    labs(x = 'respiratory frequency difference')
+
+plasma_simple %>%
+    ggplot() +
+    geom_density(aes(days_hospital, fill = hospital), position = 'dodge', alpha = 0.3) +
+    labs(x = 'stay duration (days)')
+
+
+```
+
+## Treatment per Hospital
+
+
+```{r}
+
+plasma_simple %>%
+    ggplot() +
+    geom_density(aes(nd_sint_tto, fill = hospital), position = 'dodge', alpha = 0.3) +
+    labs(x = 'days from symptoms to treatment')
+
+
+plasma_simple %>%
+    ggplot() +
+    geom_density(aes(nd_sint_ing, fill = hospital), position = 'dodge', alpha = 0.3) +
+    labs(x = 'days from symptoms to hospitalization')
+
+```
+
+## Missing data.
+
+
+```{r}
+
+plasma_simple %>%
+    filter(is.na(sat_final)) %>%
+    count()
+
+# missing data:
+plasma_simple %>%
+    group_by(hospital) %>%
+    mutate(n_hosp = n()) %>%
+    filter(is.na(sat_final)) %>%
+    group_by(hospital, group) %>%
+    summarise(n_na = n(), n_hosp = max(n_hosp)) %>%
+    mutate(percent = 100*(n_na / n_hosp)) %>%
+    select(hospital, group, percent) %>%
+    pivot_wider(names_from = group, values_from = percent)
+
+```
+
+## Hospitalization Days and Probability of Survival
+
+
+```{r}
+
+glm(days_hospital ~ age + sex + group + vital_st + hospital + 
+    nd_sint_tto + nd_sint_ing, data=plasma_simple, 
+    family = poisson(link='log')) %>%
+    summary()
+
+
+coxph(Surv(days_hospital, status) ~ age + sex + group + hospital + 
+    nd_sint_tto + nd_sint_ing + hta + obesity + dm, 
+    data=plasma_simple) %>%
+    summary()
+
+coxph(Surv(days_hospital, status) ~  group, 
+    data=plasma_simple) %>%
+    summary()
+
+survfit(Surv(days_hospital, status) ~ group, data=plasma_simple) %>%
+    broom::tidy() %>%
+    ggplot(aes(time, estimate, color = strata)) +
+    geom_line() +
+    geom_ribbon(aes(ymin=conf.low, ymax=conf.high), alpha=0.2)
+
+```
+
