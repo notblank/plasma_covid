@@ -1,0 +1,31 @@
+---
+title: "Plasma"
+author: Federico Zertuche
+date: 
+output: rmarkdown::github_document
+---
+
+
+```{r}
+
+library(tidyverse)
+library(lubridate)
+library(survival)
+
+```
+
+```{r}
+
+plasma_simple <- read_excel('~/gitrepos/experimental_designs/base_plasma.xlsx') %>%
+    janitor::clean_names() %>%
+    mutate(nd_sint_alt = interval(fechaisint, fechalt_muer) / days(1),
+           nd_sint_tto = interval(fechaisint, fechatto) / days(1),
+           nd_sint_ing = interval(fechaisint, fechaing) / days(1),
+           nd_hosp_alt = interval(fechahosp, fechalt_muer) / days(1),
+           group = case_when(per_prot == 1 ~ 'treatment', per_prot == 0 ~ 'control'),
+           status = case_when(vital_st == 'VIVO' ~ 0, vital_st == 'MUERTO' ~ 1))
+
+write_csv(plasma_simple, '../plasma_simple.csv')
+
+```
+
